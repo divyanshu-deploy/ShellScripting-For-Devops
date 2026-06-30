@@ -13,84 +13,101 @@ show_menu() {
     echo -n "Please enter your choice [1-5]: "
 }
 
-if [[ $EUID -ne 0 ]]; then
-   echo "Please run this script as root"
-   exit 1
-fi
-
 while true; do
     show_menu
     read choice
     
     case $choice in
         1)
-            read -p "Enter new username: " username
-            useradd -m "$username"
-            if [[ $? -eq 0 ]]; then
-                echo "User created successfully"
-                passwd "$username"
+            echo -e "\n--- Add a New User Account ---"
+            read -p "Enter the username to create: " username
+
+            if [ -z "$username" ]; then
+                echo "Error: Username cannot be blank."
+            elif id "$username" &>/dev/null; then
+                echo "Error: User '$username' already exists!"
             else
-                echo "Failed to create user"
+                sudo useradd -m "$username"
+                if [ $? -eq 0 ]; then
+                    echo "Success: User '$username' has been created successfully."
+                    echo "$username:$username" | sudo chpasswd
+                    echo "Temporary password set to: $username"
+                else
+                    echo "Failed to create user '$username'."
+                fi
             fi
+            echo "--------------------------------"
             ;;
-        
         2)
-            read -p "Enter username to delete: " username
-            userdel -r "$username"
-            if [[ $? -eq 0 ]]; then
-                echo "User deleted successfully"
+            echo -e "\n--- Delete a User Account ---"
+            read -p "Enter the username to delete: " username
+
+            if [ -z "$username" ]; then
+                echo "Error: Username cannot be blank."
+            elif ! id "$username" &>/dev/null; then
+                echo "Error: User '$username' does not exist!"
             else
-                echo "Failed to delete user"
+                sudo userdel -r "$username"
+                if [ $? -eq 0 ]; then
+                    echo "Success: User '$username' and their home directory have been deleted."
+                else
+                    echo "Failed to delete user '$username'."
+                fi
             fi
+            echo "--------------------------------"
             ;;
-        
         3)
-            echo "1. Add user to group"
-            echo "2. Remove user from group"
-            read -p "Choose option: " opt
-            
-            case $opt in
-                1)
-                    read -p "Enter username: " user
-                    read -p "Enter group: " group
-                    usermod -aG "$group" "$user"
-                    echo "User added to group"
-                    ;;
-                2)
-                    read -p "Enter username: " user
-                    read -p "Enter group: " group
-                    gpasswd -d "$user" "$group"
-                    echo "User removed from group"
-                    ;;
-                *)
-                    echo "Invalid option"
-                    ;;
-            esac
-            ;;
-        
-        4)
-            read -p "Enter directory to backup: " dir
-            read -p "Enter backup file name: " name
-            
-            if [[ -d "$dir" ]]; then
-                tar -czvf "${name}.tar.gz" "$dir"
-                echo "Backup created"
+            echo -e "\n--- Modify User/Group Settings ---"
+            read -p "Enter username: " username
+            read -p "Enter group name to add user to: " groupname
+
+            if [ -z "$username" ] || [ -z "$groupname" ]; then
+                echo "Error: Username and Group name cannot be blank."
+            elif ! id "$username" &>/dev/null; then
+                echo "Error: User '$username' does not exist!"
             else
-                echo "Directory does not exist"
+                if ! getent group "$groupname" &>/dev/null; then
+                    sudo groupadd "$groupname"
+                fi
+                sudo usermod -aG "$groupname" "$username"
+                if [ $? -eq 0 ]; then
+                    echo "Success: User '$username' added to group '$groupname'."
+                else
+                    echo "Failed to modify settings."
+                fi
             fi
+            echo "--------------------------------"
             ;;
-        
+        4)
+            echo -e "\n--- Backup a Directory ---"
+            read -p "Enter the absolute path of the directory to backup: " src_dir
+            read -p "Enter the absolute path of destination folder: " dest_dir
+
+            if [ ! -d "$src_dir" ]; then
+                echo "Error: Source directory does not exist!"
+            elif [ ! -d "$dest_dir" ]; then
+                echo "Error: Destination directory does not exist!"
+            else
+                backup_file="${dest_dir}/backup_$(basename "$src_dir")_$(date +%F_%H%M%S).tar.gz"
+                sudo tar -czf "$backup_file" "$src_dir" 2>/dev/null
+                if [ $? -eq 0 ]; then
+                    echo "Success: Backup created at $backup_file"
+                else
+                    echo "Failed to create backup."
+                fi
+            fi
+            echo "--------------------------------"
+            ;;
         5)
-            echo "Exiting"
+            echo -e "\nExiting tool. Goodbye!\n"
             exit 0
             ;;
-        
         *)
-            echo "Invalid option"
+            echo -e "\nInvalid option! Please choose a number between 1 and 5.\n"
             ;;
     esac
     
-    echo -n "Press Enter to continue..."
+    echo -n "Press Enter to return to the menu..."
     read
     clear
 done
